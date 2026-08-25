@@ -30,8 +30,6 @@ pub(crate) const K_A_TIME: u8 = 0x13;
 pub(crate) const K_M_TIME: u8 = 0x14;
 pub(crate) const K_WIN_ATTRIBUTES: u8 = 0x15;
 
-/// TODO: Implement reading & writing comments
-#[allow(unused)]
 pub(crate) const K_COMMENT: u8 = 0x16;
 pub(crate) const K_ENCODED_HEADER: u8 = 0x17;
 pub(crate) const K_START_POS: u8 = 0x18;
@@ -43,6 +41,11 @@ pub(crate) const K_DUMMY: u8 = 0x19;
 /// and internal structure information necessary for decompression.
 #[derive(Debug, Default, Clone)]
 pub struct Archive {
+    /// Optional archive comment as stored in the 7z header.
+    ///
+    /// The bytes are not decoded because 7z does not prescribe a single
+    /// character encoding for comments.
+    pub comment: Option<Vec<u8>>,
     /// Offset from beginning of file + SIGNATURE_HEADER_SIZE to packed streams.
     pub(crate) pack_pos: u64,
     pub(crate) pack_sizes: Vec<u64>,

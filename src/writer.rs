@@ -80,6 +80,7 @@ type Result<T> = std::result::Result<T, Error>;
 pub struct ArchiveWriter<W: Write> {
     output: W,
     files: Vec<ArchiveEntry>,
+    comment: Option<Vec<u8>>,
     content_methods: Arc<Vec<EncoderConfiguration>>,
     pack_info: PackInfo,
     unpack_info: UnpackInfo,
@@ -105,6 +106,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         Ok(Self {
             output: writer,
             files: Default::default(),
+            comment: None,
             content_methods: Arc::new(vec![EncoderConfiguration::new(EncoderMethod::LZMA2)]),
             pack_info: Default::default(),
             unpack_info: Default::default(),
@@ -124,6 +126,21 @@ impl<W: Write + Seek> ArchiveWriter<W> {
             return self;
         }
         self.content_methods = Arc::new(content_methods);
+        self
+    }
+
+    /// Sets the archive comment bytes written to the 7z header.
+    ///
+    /// The bytes are stored unchanged, allowing callers to choose the
+    /// character encoding and whether to include a terminator.
+    pub fn set_comment(&mut self, comment: impl Into<Vec<u8>>) -> &mut Self {
+        self.comment = Some(comment.into());
+        self
+    }
+
+    /// Removes a previously configured archive comment.
+    pub fn clear_comment(&mut self) -> &mut Self {
+        self.comment = None;
         self
     }
 
@@ -511,6 +528,7 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         self.write_file_atimes(header)?;
         self.write_file_mtimes(header)?;
         self.write_file_windows_attrs(header)?;
+        self.write_comment(header)?;
         header.write_u8(K_END)?;
         Ok(())
     }
@@ -626,6 +644,17 @@ impl<W: Write + Seek> ArchiveWriter<W> {
         windows_attributes,
         write_u32
     );
+
+    fn write_comment<H: Write>(&self, header: &mut H) -> std::io::Result<()> {
+        let Some(comment) = &self.comment else {
+            return Ok(());
+        };
+
+        header.write_u8(K_COMMENT)?;
+        write_u64(header, comment.len() as u64 + 1)?;
+        header.write_u8(0)?; // inline data, not an external stream
+        header.write_all(comment)
+    }
 }
 
 impl<W: Write + Seek> AutoFinish for ArchiveWriter<W> {

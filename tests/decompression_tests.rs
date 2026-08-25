@@ -11,6 +11,43 @@ use sevenz_rust2::{Archive, ArchiveReader, BlockDecoder, Password};
 #[cfg(feature = "util")]
 use tempfile::tempdir;
 
+fn archive_with_comment(comment: &[u8]) -> Vec<u8> {
+    let property_size = 1 + comment.len();
+    assert!(property_size < 0x80);
+    let mut next_header = vec![
+        0x01, // kHeader
+        0x05, // kFilesInfo
+        0x00, // zero files
+        0x16, // kComment
+        property_size as u8,
+        0x00, // inline (not external)
+    ];
+    next_header.extend_from_slice(comment);
+    next_header.extend_from_slice(&[0x00, 0x00]); // FilesInfo end, Header end
+
+    let next_header_crc = crc32fast::hash(&next_header);
+    let mut start_header = Vec::with_capacity(20);
+    start_header.extend_from_slice(&0_u64.to_le_bytes());
+    start_header.extend_from_slice(&(next_header.len() as u64).to_le_bytes());
+    start_header.extend_from_slice(&next_header_crc.to_le_bytes());
+
+    let mut archive = b"7z\xBC\xAF\x27\x1C".to_vec();
+    archive.extend_from_slice(&[0, 4]);
+    archive.extend_from_slice(&crc32fast::hash(&start_header).to_le_bytes());
+    archive.extend_from_slice(&start_header);
+    archive.extend_from_slice(&next_header);
+    archive
+}
+
+#[test]
+fn reads_archive_comment() {
+    let comment = b"arbitrary encoding: \xFF\xFE\x80";
+    let bytes = archive_with_comment(comment);
+    let archive = Archive::read(&mut std::io::Cursor::new(bytes), &Password::empty()).unwrap();
+
+    assert_eq!(archive.comment.as_deref(), Some(comment.as_slice()));
+}
+
 #[cfg(feature = "util")]
 #[test]
 fn decompress_single_empty_file_unencoded_header() {
